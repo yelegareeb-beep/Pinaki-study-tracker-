@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zenith Focus | Deep Work Planner</title>
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-deep: #121212;
+            --bg-card: #1e1e1e;
+            --accent: #bb86fc;
+            --accent-variant: #3700b3;
+            --text-high: rgba(255, 255, 255, 0.87);
+            --text-med: rgba(255, 255, 255, 0.6);
+            --success: #03dac6;
+            --radius: 12px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-deep);
+            color: var(--text-high);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 24px;
+        }
+
+        h2 { font-size: 1.2rem; margin-bottom: 15px; color: var(--accent); letter-spacing: 1px; text-transform: uppercase; }
+
+        /* Generic Card Styling */
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            transition: var(--transition);
+        }
+        .card:hover { transform: translateY(-2px); }
+
+        /* Timer Styles */
+        .timer-display {
+            font-size: 3.5rem;
+            font-weight: bold;
+            text-align: center;
+            margin: 15px 0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Large Easy-to-Tap Buttons */
+        .btn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            width: 100%;
+            transition: var(--transition);
+            margin: 5px 0;
+            display: inline-block;
+            text-align: center;
+        }
+        .btn:active { transform: scale(0.96); }
+        .btn-outline { background: transparent; border: 2px solid var(--accent); color: var(--accent); }
+        .btn-stop { background: #cf6679; }
+
+        /* Inputs */
+        input, select {
+            width: 100%;
+            background: #2a2a2a;
+            border: 1px solid #333;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            outline: none;
+        }
+
+        /* To-Do & List Items */
+        .list-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #252525;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            animation: fadeIn 0.4s ease;
+        }
+        .list-item.done { opacity: 0.5; text-decoration: line-through; border-left: 4px solid var(--success); }
+        .list-item label { flex-grow: 1; margin: 0 10px; cursor: pointer; }
+
+        .stats-strip {
+            display: flex;
+            justify-content: space-between;
+            background: #2a2a2a;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        /* Chart Canvas */
+        #progressChart { max-height: 250px; margin-top: 15px; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Subject Indicator */
+        .sub-tag { padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; margin-left: 10px; }
+
+        @media (max-width: 800px) {
+            .container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- LEFT COLUMN -->
+    <div class="sidebar">
+        <!-- Subjects Manager -->
+        <div class="card">
+            <h2>Subjects</h2>
+            <div id="subjectTags" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;"></div>
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="newSubName" placeholder="New subject (e.g. Physics)" style="margin-bottom: 0;">
+                <button class="btn" style="width: auto;" onclick="addSubject()">+</button>
+            </div>
+        </div>
+
+        <!-- Timer -->
+        <div class="card">
+            <h2>Focus Timer</h2>
+            <select id="timerSubjectSelect"></select>
+            <div class="timer-display" id="timerValue">25:00</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button class="btn" id="timerToggle" onclick="toggleTimer()">Start</button>
+                <button class="btn btn-outline" onclick="resetTimer()">Reset</button>
+            </div>
+        </div>
+
+        <!-- Progress Visualizer -->
+        <div class="card">
+            <h2>Daily Progress (Hrs)</h2>
+            <canvas id="progressChart"></canvas>
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="content">
+        <!-- Statistics Section -->
+        <div class="stats-strip">
+            <div>🔥 Complete: <span id="hrsComplete" style="color:var(--success)">0h</span></div>
+            <div>⏳ Remaining: <span id="hrsRemaining" style="color:var(--accent)">0h</span></div>
+        </div>
+
+        <!-- Planner -->
+        <div class="card">
+            <h2>Day Scheduler</h2>
+            <div style="max-height: 400px; overflow-y: auto;" id="plannerBody">
+                <!-- Planner hours injected here -->
+            </div>
+        </div>
+
+        <!-- Tasks -->
+        <div class="card">
+            <h2>Tasks / To-Do</h2>
+            <div id="taskList"></div>
+            <hr style="border: 0; border-top: 1px solid #333; margin: 15px 0;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 0.5fr; gap: 8px;">
+                <input type="text" id="taskDesc" placeholder="Task description">
+                <select id="taskSubject"></select>
+                <input type="number" id="taskHrs" placeholder="Hrs" step="0.5">
+            </div>
+            <button class="btn" onclick="addTask()">Add Task</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- APP STATE & LOCALSTORAGE ---
+    let state = {
+        subjects: JSON.parse(localStorage.getItem('subjects')) || ['Work', 'Rest'],
+        tasks: JSON.parse(localStorage.getItem('tasks')) || [],
+        logs: JSON.parse(localStorage.getItem('logs')) || {}, // subject: totalSecondsSpentToday
+        schedule: JSON.parse(localStorage.getItem('schedule')) || {} // "hour": "subject"
+    };
+
+    function save() {
+        localStorage.setItem('subjects', JSON.stringify(state.subjects));
+        localStorage.setItem('tasks', JSON.stringify(state.tasks));
+        localStorage.setItem('logs', JSON.stringify(state.logs));
+        localStorage.setItem('schedule', JSON.stringify(state.schedule));
+        updateCharts();
+        calculateWorkHours();
+    }
+
+    // --- SUBJECTS ---
+    function addSubject() {
+        const input = document.getElementById('newSubName');
+        const val = input.value.trim();
+        if (val && !state.subjects.includes(val)) {
+            state.subjects.push(val);
+            input.value = '';
+            renderSubjects();
+            save();
+        }
+    }
+
+    function renderSubjects() {
+        const tagContainer = document.getElementById('subjectTags');
+        const tSel = document.getElementById('timerSubjectSelect');
+        const pSel = document.getElementById('taskSubject');
+        
+        [tagContainer, tSel, pSel].forEach(el => el.innerHTML = '');
+        
+        state.subjects.forEach(sub => {
+            tagContainer.innerHTML += `<span class="sub-tag" style="background:#444; border: 1px solid var(--accent)">${sub}</span>`;
+            tSel.innerHTML += `<option value="${sub}">${sub}</option>`;
+            pSel.innerHTML += `<option value="${sub}">${sub}</option>`;
+        });
+        
+        // Planner dropdowns (if rendered)
+        document.querySelectorAll('.planner-sub-sel').forEach(sel => {
+            const current = sel.value;
+            sel.innerHTML = `<option value="">--- Select ---</option>`;
+            state.subjects.forEach(sub => {
+                sel.innerHTML += `<option value="${sub}" ${current === sub ? 'selected' : ''}>${sub}</option>`;
+            });
+        });
+    }
+
+    // --- TIMER ---
+    let timerInterval = null;
+    let timerRunning = false;
+    let secondsLeft = 1500;
+
+    function toggleTimer() {
+        const btn = document.getElementById('timerToggle');
+        if (timerRunning) {
+            clearInterval(timerInterval);
+            btn.textContent = 'Start';
+            btn.classList.remove('btn-stop');
+            timerRunning = false;
+        } else {
+            const subject = document.getElementById('timerSubjectSelect').value;
+            timerInterval = setInterval(() => {
+                if (secondsLeft > 0) {
+                    secondsLeft--;
+                    updateTimerUI();
+                    logTime(subject, 1); 
+                } else {
+                    toggleTimer();
+                }
+            }, 1000);
+            btn.textContent = 'Pause';
+            btn.classList.add('btn-stop');
+            timerRunning = true;
+        }
+    }
+
+    function resetTimer() {
+        clearInterval(timerInterval);
+        timerRunning = false;
+        secondsLeft = 1500;
+        updateTimerUI();
+        document.getElementById('timerToggle').textContent = 'Start';
+        document.getElementById('timerToggle').classList.remove('btn-stop');
+    }
+
+    function updateTimerUI() {
+        const mins = Math.floor(secondsLeft / 60);
+        const secs = secondsLeft % 60;
+        document.getElementById('timerValue').textContent = 
+            `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function logTime(subject, seconds) {
+        state.logs[subject] = (state.logs[subject] || 0) + seconds;
+        // Optimization: Save logs only every 10s or when stopped
+        if (secondsLeft % 10 === 0) save();
+    }
+
+    // --- CHART.JS ---
+    let progressChart;
+    function initChart() {
+        const ctx = document.getElementById('progressChart').getContext('2d');
+        progressChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: state.subjects,
+                datasets: [{
+                    label: 'Actual Hours',
+                    data: state.subjects.map(s => (state.logs[s] || 0) / 3600),
+                    backgroundColor: '#bb86fc88',
+                    borderColor: '#bb86fc',
+                    borderWidth: 2,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#333' } },
+                    x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function updateCharts() {
+        if (!progressChart) return;
+        progressChart.data.labels = state.subjects;
+        progressChart.data.datasets[0].data = state.subjects.map(s => (state.logs[s] || 0) / 3600);
+        progressChart.update();
+    }
+
+    // --- TO-DO LIST & HOUR CALCS ---
+    function addTask() {
+        const desc = document.getElementById('taskDesc');
+        const sub = document.getElementById('taskSubject');
+        const hrs = document.getElementById('taskHrs');
+        
+        if (desc.value.trim()) {
+            state.tasks.push({
+                id: Date.now(),
+                desc: desc.value.trim(),
+                sub: sub.value,
+                hrs: parseFloat(hrs.value) || 0,
+                done: false
+            });
+            desc.value = ''; hrs.value = '';
+            renderTasks();
+            save();
+        }
+    }
+
+    function toggleTask(id) {
+        const task = state.tasks.find(t => t.id === id);
+        if (task) task.done = !task.done;
+        renderTasks();
+        save();
+    }
+
+    function renderTasks() {
+        const container = document.getElementById('taskList');
+        container.innerHTML = '';
+        state.tasks.forEach(task => {
+            container.innerHTML += `
+                <div class="list-item ${task.done ? 'done' : ''}">
+                    <input type="checkbox" ${task.done ? 'checked' : ''} onchange="toggleTask(${task.id})">
+                    <label>${task.desc} <span class="sub-tag">${task.sub}</span></label>
+                    <span style="font-size:0.8rem; color:var(--text-med)">${task.hrs}h</span>
+                </div>
+            `;
+        });
+    }
+
+    function calculateWorkHours() {
+        const done = state.tasks.filter(t => t.done).reduce((a, b) => a + b.hrs, 0);
+        const rem = state.tasks.filter(t => !t.done).reduce((a, b) => a + b.hrs, 0);
+        document.getElementById('hrsComplete').textContent = done.toFixed(1) + 'h';
+        document.getElementById('hrsRemaining').textContent = rem.toFixed(1) + 'h';
+    }
+
+    // --- PLANNER ---
+    function renderPlanner() {
+        const body = document.getElementById('plannerBody');
+        body.innerHTML = '';
+        for (let i = 7; i <= 21; i++) {
+            const hourStr = `${i.toString().padStart(2, '0')}:00`;
+            const selectedSub = state.schedule[hourStr] || "";
+            body.innerHTML += `
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                    <div style="min-width:60px; font-size:0.85rem; color:var(--text-med)">${hourStr}</div>
+                    <select class="planner-sub-sel" onchange="updateSchedule('${hourStr}', this.value)" style="margin-bottom:0">
+                        <option value="">---</option>
+                        ${state.subjects.map(s => `<option value="${s}" ${selectedSub === s ? 'selected' : ''}>${s}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        }
+    }
+
+    function updateSchedule(hour, sub) {
+        state.schedule[hour] = sub;
+        save();
+    }
+
+    // --- INIT ---
+    renderSubjects();
+    renderTasks();
+    renderPlanner();
+    initChart();
+    calculateWorkHours();
+</script>
+
+</body>
+</html>
